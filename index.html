@@ -4062,19 +4062,51 @@ const Supervisores = {
     renderDirectorSupervisoresTab();
   },
   async addPoint(){
-    const nombre = document.getElementById("pt_nombre").value.trim();
+    const nombre = document.getElementById("pt_nombre")?.value.trim();
     if(!nombre){ alert("Escribe el nombre del punto de dispensación."); return; }
-    const codigo = document.getElementById("pt_codigo").value.trim();
-    if(codigo && DB.puntos.some(p=>(p.codigo||"").trim().toLowerCase()===codigo.toLowerCase())){
-      alert(`Ya existe un punto registrado con el código "${codigo}". Usa un código distinto.`);
-      return;
-    }
+    
+    const codigo = document.getElementById("pt_codigo")?.value.trim();
+    
+    // Lectura de los demás campos usando la función del sistema
     const vals = readPointFormValues("pt_");
-    const p = blankPoint();
-    Object.assign(p, vals);
-    DB.puntos.push(p);
-    await saveMaster(MASTER_KEYS.puntos, DB.puntos);
-    renderDirectorPuntos();
+    
+    // Objeto estructurado para Supabase
+    const nuevoPunto = {
+      codigo: codigo || '',
+      punto: nombre,
+      ciudad_depto: vals.departamento ? `${vals.ciudad || ''} - ${vals.departamento}` : (vals.ciudad || ''),
+      tipo_estab: vals.tipo || '',
+      clasificacion: vals.clasificacion || '',
+      supervisor: vals.supervisor || 'Sin asignar'
+    };
+try {
+      // Guardado directo en Supabase y retorno del objeto creado (.select())
+      const { data, error } = await supabaseClient
+        .from('puntos_dispensacion')
+        .insert([nuevoPunto])
+        .select();
+
+      if (error) {
+        console.error("Error en Supabase:", error);
+        alert("Error al guardar en la base de datos: " + error.message);
+        return;
+      }
+
+      // Actualiza la lista local que usa renderDirectorPuntos() para mostrarlo en pantalla al instante
+      if (data && data.length > 0) {
+        if (!Array.isArray(DB.puntos)) DB.puntos = [];
+        DB.puntos.push(data[0]);
+      }
+
+      alert("¡Punto agregado con éxito en la base de datos!");
+      
+      // Limpiar inputs y refrescar la vista
+      renderDirectorPuntos();
+
+    } catch (err) {
+      console.error("Error inesperado:", err);
+      alert("Ocurrió un error inesperado al intentar guardar.");
+    }
   },
   async geocode(dirId, ciudadId, deptoId, latId, lngId){
     const dir = document.getElementById(dirId).value.trim();

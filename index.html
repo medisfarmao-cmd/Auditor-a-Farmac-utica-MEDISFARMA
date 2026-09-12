@@ -6768,28 +6768,61 @@ App.init();
   const SUPABASE_URL = 'https://bhhvnipahzsmrenlgadh.supabase.co';
  const SUPABASE_KEY = 'sb_publishable_6fJ71DmH7rDlSuXktPipAw_EW-BtVuK';
 
-  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  async function guardarDatos(datos) {
+// Función para insertar registros en Supabase
+async function guardarEnSupabase(tipoEvento, perfil, usuario, puntoVenta, detalles) {
+  try {
     const { data, error } = await supabaseClient
-      .from('prueba_github_actions') // <--- Pon el nombre real de tu tabla
-      .insert([datos]);
+      .from('registro_auditorias')
+      .insert([
+        {
+          tipo_evento: tipoEvento,
+          perfil: perfil,
+          usuario: usuario,
+          punto_venta: puntoVenta,
+          detalles: detalles
+        }
+      ]);
 
-    if (error) alert('Error guardando: ' + error.message);
-    else alert('¡Información guardada exitosamente!');
+    if (error) {
+      console.error('Error al guardar en registro_auditorias:', error);
+      return { success: false, error };
+    }
+
+    console.log('Registro guardado exitosamente:', data);
+    return { success: true, data };
+  } catch (err) {
+    console.error('Error de conexión:', err);
+    return { success: false, error: err };
   }
+}
 
-  async function cargarDatos() {
-    const { data, error } = await supabaseClient
-      .from('prueba_github_actions') // <--- Pon el nombre real de tu tabla
-      .select('*');
+// Capturar el evento de inicio de sesión automáticamente
+document.addEventListener('DOMContentLoaded', () => {
+  const btnLogin = document.querySelector('#view-login .btn-primary');
+  if (btnLogin) {
+    btnLogin.addEventListener('click', () => {
+      const perfilElem = document.getElementById('login_role');
+      const perfilTexto = perfilElem && perfilElem.selectedIndex >= 0 ? perfilElem.options[perfilElem.selectedIndex].text : '';
+      
+      const usuarioElem = document.getElementById('login_who');
+      const usuarioTexto = usuarioElem && usuarioElem.options[usuarioElem.selectedIndex] 
+        ? usuarioElem.options[usuarioElem.selectedIndex].text 
+        : '';
 
-    if (!error) console.log('Registros:', data);
-    else console.error('Error leyendo:', error.message);
+      guardarEnSupabase(
+        'LOGIN',
+        perfilTexto,
+        usuarioTexto,
+        'N/A',
+        { fecha: new Date().toISOString() }
+      );
+    });
   }
-  // Agrega estas líneas al final de tu bloque <script>
-window.guardarDatos = guardarDatos;
-window.cargarDatos = cargarDatos;
+});
+
+window.guardarEnSupabase = guardarEnSupabase;
 </script>
 </body>
 </html>

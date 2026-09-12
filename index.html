@@ -6759,5 +6759,34 @@ const App = {
 
 App.init();
 </script>
+<!-- 1. Primero se carga la librería de Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- 2. Luego se inicializa y se definen las funciones -->
+<script>
+  // Reemplaza TU_URL_REAL por la URL de tu panel en Supabase
+  const SUPABASE_URL = 'https://bhhvnipahzsmrenlgadh.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_6fJ71DmH7rDlSuXktPipAw_EW-BtV...';
+
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  async function guardarDatos(datos) {
+    const { data, error } = await supabaseClient
+      .from('prueba_github_actions') // <--- Pon el nombre real de tu tabla
+      .insert([datos]);
+
+    if (error) alert('Error guardando: ' + error.message);
+    else alert('¡Información guardada exitosamente!');
+  }
+
+  async function cargarDatos() {
+    const { data, error } = await supabaseClient
+      .from('prueba_github_actions') // <--- Pon el nombre real de tu tabla
+      .select('*');
+
+    if (!error) console.log('Registros:', data);
+    else console.error('Error leyendo:', error.message);
+  }
+</script>
 </body>
 </html>

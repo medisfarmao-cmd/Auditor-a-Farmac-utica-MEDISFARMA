@@ -495,6 +495,7 @@ canvas.sigpad{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -513,7 +514,6 @@ canvas.sigpad{
     </div>
   </div>
 
-  <!-- LOGIN VIEW -->
   <div class="view" id="view-login">
     <div class="login-hero">
       <svg class="login-bg-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -873,7 +873,28 @@ const CRIT_LABEL = {critico:"Crítico", mayor:"Mayor", informativo:"Informativo"
    ESTADO / PERSISTENCIA
    ========================================================= */
 const STORAGE_PREFIX = "audit:";
-let hasStorage = (typeof window.storage !== "undefined");
+
+/* =========================================================
+   ALMACENAMIENTO (Supabase)
+   Reemplaza el antiguo window.storage de Claude. Usa una sola
+   tabla "app_data" (key text, value jsonb) que actúa como
+   almacén clave-valor — igual patrón que antes, para no tener
+   que tocar el resto de la aplicación.
+
+   PEGA AQUÍ TUS DATOS DE SUPABASE (Project Settings → API):
+   ========================================================= */
+const SUPABASE_URL = "https://medisfarmao-cmd.github.io/Auditor-a-Farmac-utica-MEDISFARMA/";       // ej: https://xxxxxxxx.supabase.co
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaHZuaXBhaHpzbXJlbmxnYWRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyNTU0NjUsImV4cCI6MjEwMzgzMTQ2NX0.YWRL3Ejs8VB7AoUsXIm48_wuJxA7bSv0m61C1GMTl0M";
+
+let supabaseClient = null;
+try{
+  if(window.supabase && typeof SUPABASE_URL === "string" && SUPABASE_URL.indexOf("https://") === 0){
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+}catch(e){ console.error("No se pudo inicializar Supabase:", e); }
+
+let hasStorage = !!supabaseClient;
+
 // NOTA: las auditorías se guardan en almacenamiento COMPARTIDO (shared=true) para que
 // el panel de "Supervisores" pueda consolidar el trabajo de todo el equipo. Esto significa
 // que cualquier persona que abra este mismo aplicativo puede ver todas las auditorías.
@@ -1125,17 +1146,11 @@ function listAudits(){
 async function loadAuditsFromStorage(){
   if(!hasStorage) return [];
   try{
-    const res = await window.storage.list(STORAGE_PREFIX, true);
-    if(!res || !res.keys) return [];
-    const audits = [];
-    for(const k of res.keys){
-      try{
-        const r = await window.storage.get(k, true);
-        if(r && r.value) audits.push(ensureReviewFields(JSON.parse(r.value)));
-      }catch(e){ /* skip unreadable */ }
-    }
-    return audits;
-  }catch(e){ return []; }
+    const { data, error } = await supabaseClient.from("app_data").select("value").like("key", STORAGE_PREFIX + "%");
+    if(error) throw error;
+    if(!data) return [];
+    return data.map(row => ensureReviewFields(row.value)).filter(Boolean);
+  }catch(e){ console.error("Error cargando auditorías:", e); return []; }
 }
 
 async function saveAudit(a){
@@ -1145,15 +1160,18 @@ async function saveAudit(a){
   if(localDriveRootHandle){ exportAuditToLocalDrive(a).catch(e=>console.error(e)); }
   if(!hasStorage) return false;
   try{
-    await window.storage.set(STORAGE_PREFIX + a.id, JSON.stringify(a), true);
+    const { error } = await supabaseClient.from("app_data")
+      .upsert({ key: STORAGE_PREFIX + a.id, value: a, updated_at: new Date().toISOString() });
+    if(error) throw error;
     return true;
-  }catch(e){ return false; }
+  }catch(e){ console.error("Error guardando auditoría:", e); return false; }
 }
 
 async function deleteAudit(id){
   DB.audits = DB.audits.filter(x=>x.id!==id);
   if(!hasStorage) return;
-  try{ await window.storage.delete(STORAGE_PREFIX + id, true); }catch(e){}
+  try{ await supabaseClient.from("app_data").delete().eq("key", STORAGE_PREFIX + id); }
+  catch(e){ console.error("Error eliminando auditoría:", e); }
 }
 
 /* =========================================================
@@ -1187,15 +1205,20 @@ function uid(prefix){
 async function loadMaster(key, isObject){
   if(!hasStorage) return isObject ? {} : [];
   try{
-    const r = await window.storage.get(key, true);
-    if(r && r.value) return JSON.parse(r.value);
+    const { data, error } = await supabaseClient.from("app_data").select("value").eq("key", key).maybeSingle();
+    if(error) throw error;
+    if(data && data.value) return data.value;
     return isObject ? {} : [];
-  }catch(e){ return isObject ? {} : []; }
+  }catch(e){ console.error("Error cargando", key, e); return isObject ? {} : []; }
 }
 async function saveMaster(key, data){
   if(!hasStorage) return false;
-  try{ await window.storage.set(key, JSON.stringify(data), true); return true; }
-  catch(e){ return false; }
+  try{
+    const { error } = await supabaseClient.from("app_data")
+      .upsert({ key, value: data, updated_at: new Date().toISOString() });
+    if(error) throw error;
+    return true;
+  }catch(e){ console.error("Error guardando", key, e); return false; }
 }
 
 const DEFAULT_DOC_TYPE_NAMES = [
@@ -4062,51 +4085,19 @@ const Supervisores = {
     renderDirectorSupervisoresTab();
   },
   async addPoint(){
-    const nombre = document.getElementById("pt_nombre")?.value.trim();
+    const nombre = document.getElementById("pt_nombre").value.trim();
     if(!nombre){ alert("Escribe el nombre del punto de dispensación."); return; }
-    
-    const codigo = document.getElementById("pt_codigo")?.value.trim();
-    
-    // Lectura de los demás campos usando la función del sistema
-    const vals = readPointFormValues("pt_");
-    
-    // Objeto estructurado para Supabase
-    const nuevoPunto = {
-      codigo: codigo || '',
-      punto: nombre,
-      ciudad_depto: vals.departamento ? `${vals.ciudad || ''} - ${vals.departamento}` : (vals.ciudad || ''),
-      tipo_estab: vals.tipo || '',
-      clasificacion: vals.clasificacion || '',
-      supervisor: vals.supervisor || 'Sin asignar'
-    };
-try {
-      // Guardado directo en Supabase y retorno del objeto creado (.select())
-      const { data, error } = await supabaseClient
-        .from('puntos_dispensacion')
-        .insert([nuevoPunto])
-        .select();
-
-      if (error) {
-        console.error("Error en Supabase:", error);
-        alert("Error al guardar en la base de datos: " + error.message);
-        return;
-      }
-
-      // Actualiza la lista local que usa renderDirectorPuntos() para mostrarlo en pantalla al instante
-      if (data && data.length > 0) {
-        if (!Array.isArray(DB.puntos)) DB.puntos = [];
-        DB.puntos.push(data[0]);
-      }
-
-      alert("¡Punto agregado con éxito en la base de datos!");
-      
-      // Limpiar inputs y refrescar la vista
-      renderDirectorPuntos();
-
-    } catch (err) {
-      console.error("Error inesperado:", err);
-      alert("Ocurrió un error inesperado al intentar guardar.");
+    const codigo = document.getElementById("pt_codigo").value.trim();
+    if(codigo && DB.puntos.some(p=>(p.codigo||"").trim().toLowerCase()===codigo.toLowerCase())){
+      alert(`Ya existe un punto registrado con el código "${codigo}". Usa un código distinto.`);
+      return;
     }
+    const vals = readPointFormValues("pt_");
+    const p = blankPoint();
+    Object.assign(p, vals);
+    DB.puntos.push(p);
+    await saveMaster(MASTER_KEYS.puntos, DB.puntos);
+    renderDirectorPuntos();
   },
   async geocode(dirId, ciudadId, deptoId, latId, lngId){
     const dir = document.getElementById(dirId).value.trim();
@@ -6789,72 +6780,15 @@ const App = {
   }
 };
 
-App.init();
-</script>
-<!-- 1. Primero se carga la librería de Supabase -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<!-- 2. Luego se inicializa y se definen las funciones -->
-<script>
-  // Reemplaza TU_URL_REAL por la URL de tu panel en Supabase
-  const SUPABASE_URL = 'https://bhhvnipahzsmrenlgadh.supabase.co';
- const SUPABASE_KEY = 'sb_publishable_6fJ71DmH7rDlSuXktPipAw_EW-BtVuK';
-
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Función para insertar registros en Supabase
-async function guardarEnSupabase(tipoEvento, perfil, usuario, puntoVenta, detalles) {
-  try {
-    const { data, error } = await supabaseClient
-      .from('registro_auditorias')
-      .insert([
-        {
-          tipo_evento: tipoEvento,
-          perfil: perfil,
-          usuario: usuario,
-          punto_venta: puntoVenta,
-          detalles: detalles
-        }
-      ]);
-
-    if (error) {
-      console.error('Error al guardar en registro_auditorias:', error);
-      return { success: false, error };
-    }
-
-    console.log('Registro guardado exitosamente:', data);
-    return { success: true, data };
-  } catch (err) {
-    console.error('Error de conexión:', err);
-    return { success: false, error: err };
+async function bootstrap(){
+  const brandLogo = document.getElementById("brandLogo");
+  if(brandLogo) brandLogo.src = LOGO_DATA_URI;
+  if(!hasStorage){
+    console.warn("Supabase no está configurado todavía (revisa SUPABASE_URL y SUPABASE_ANON_KEY). La app funcionará, pero no se guardará nada.");
   }
+  await App.init();
 }
-
-// Capturar el evento de inicio de sesión automáticamente
-document.addEventListener('DOMContentLoaded', () => {
-  const btnLogin = document.querySelector('#view-login .btn-primary');
-  if (btnLogin) {
-    btnLogin.addEventListener('click', () => {
-      const perfilElem = document.getElementById('login_role');
-      const perfilTexto = perfilElem && perfilElem.selectedIndex >= 0 ? perfilElem.options[perfilElem.selectedIndex].text : '';
-      
-      const usuarioElem = document.getElementById('login_who');
-      const usuarioTexto = usuarioElem && usuarioElem.options[usuarioElem.selectedIndex] 
-        ? usuarioElem.options[usuarioElem.selectedIndex].text 
-        : '';
-
-      guardarEnSupabase(
-        'LOGIN',
-        perfilTexto,
-        usuarioTexto,
-        'N/A',
-        { fecha: new Date().toISOString() }
-      );
-    });
-  }
-});
-
-window.guardarEnSupabase = guardarEnSupabase;
+bootstrap();
 </script>
 </body>
 </html>

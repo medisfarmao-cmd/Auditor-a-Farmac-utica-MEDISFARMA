@@ -883,7 +883,7 @@ const STORAGE_PREFIX = "audit:";
 
    PEGA AQUÍ TUS DATOS DE SUPABASE (Project Settings → API):
    ========================================================= */
-const SUPABASE_URL = "https://medisfarmao-cmd.github.io/Auditor-a-Farmac-utica-MEDISFARMA/";       // ej: https://xxxxxxxx.supabase.co
+const SUPABASE_URL = "https://bhhvnipahzsmrenlgadh.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaHZuaXBhaHpzbXJlbmxnYWRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyNTU0NjUsImV4cCI6MjEwMzgzMTQ2NX0.YWRL3Ejs8VB7AoUsXIm48_wuJxA7bSv0m61C1GMTl0M";
 
 let supabaseClient = null;
@@ -6785,6 +6785,16 @@ async function bootstrap(){
   if(brandLogo) brandLogo.src = LOGO_DATA_URI;
   if(!hasStorage){
     console.warn("Supabase no está configurado todavía (revisa SUPABASE_URL y SUPABASE_ANON_KEY). La app funcionará, pero no se guardará nada.");
+  } else {
+    try{
+      const { error } = await supabaseClient.from("app_data").select("key").limit(1);
+      if(error) throw error;
+      console.log("✅ Conexión con Supabase verificada correctamente.");
+    }catch(e){
+      hasStorage = false;
+      console.error("❌ No se pudo conectar con Supabase:", e);
+      alert("No se pudo conectar con la base de datos (Supabase). La app va a funcionar, pero nada de lo que hagas se va a guardar.\n\nRevisa: 1) que SUPABASE_URL sea tu Project URL (termina en .supabase.co, NO tu enlace de GitHub), 2) que la tabla 'app_data' exista, 3) que el anon key esté completo.\n\nDetalle técnico: " + (e && e.message ? e.message : e));
+    }
   }
   await App.init();
 }
